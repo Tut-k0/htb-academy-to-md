@@ -4,5 +4,6 @@ import "fmt"
 
 func main() {
 	options := getArguments()
-	fmt.Println(options)
+	session := authenticate(options.email, options.password)
+	fmt.Println(session)
 }
