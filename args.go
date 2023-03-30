@@ -17,7 +17,7 @@ func getArguments() Args {
 	var mFlag = flag.String("m", "", "(REQUIRED) Academy Module URL to the first page.")
 	var eFlag = flag.String("e", "", "(REQUIRED) Email for your HTB Academy account.")
 	var pFlag = flag.String("p", "", "(REQUIRED) Password for your HTB Academy account.")
-	var imgFlag = flag.Bool("images", false, "Save images locally rather than referencing the static URL.")
+	var imgFlag = flag.Bool("local_images", false, "Save images locally rather than referencing the URL location.")
 	flag.Parse()
 	arg := Args{
 		moduleUrl:   *mFlag,

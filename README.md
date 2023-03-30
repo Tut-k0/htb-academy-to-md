@@ -4,6 +4,12 @@ This program only will grab one module at a time, and requires authenticating wi
 
 ### Running the Application
 ```bash
+# Get the help menu displayed
+htb-academy-to-md -h
+
 # Feed the URL to the first page of the module.
-htb-academy-to-md -m https://academy.hackthebox.com/module/112/ -e <email> -p <password>
+htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -e <email> -p <password>
+
+# Save images in module locally.
+htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -e <email> -p <password> -local_images
 ```
