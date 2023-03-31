@@ -95,6 +95,164 @@ func parseLoginToken(htmlText string) string {
 	}
 }
 
+func getModule(moduleUrl string, creds Auth) (string, []string) {
+	//proxy, _ := url.Parse("http://localhost:8080")
+	//tr := &http.Transport{Proxy: http.ProxyURL(proxy), TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	client := &http.Client{}
+	//client.Transport = tr
+	req, err := http.NewRequest("GET", moduleUrl, nil)
+	if err != nil {
+		die(err)
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0")
+	req.Header.Add("Cookie", creds.cookies)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		die(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		die(err)
+	}
+	content := string(body)
+	moduleTitle := getModuleTitle(content)
+	pageUrls := getModulePages(content, moduleUrl)
+
+	var pagesContent []string
+	for _, pageUrl := range pageUrls {
+		pagesContent = append(pagesContent, extractHTMLContent(pageUrl, creds))
+	}
+
+	return moduleTitle, pagesContent
+}
+
+func getModuleTitle(htmlText string) string {
+	var title string
+	var isTitle bool
+	tkn := html.NewTokenizer(strings.NewReader(htmlText))
+
+	for {
+		tt := tkn.Next()
+		switch {
+
+		case tt == html.ErrorToken:
+			os.Exit(1)
+
+		case tt == html.StartTagToken:
+			t := tkn.Token()
+			if t.Data == "title" {
+				isTitle = true
+			}
+		case tt == html.TextToken:
+			t := tkn.Token()
+
+			if isTitle {
+				title = t.Data
+				return title
+			}
+		case tt == html.EndTagToken:
+			t := tkn.Token()
+			if t.Data == "html" {
+				fmt.Println("Could not find title on module page, exiting.")
+				os.Exit(1)
+			}
+		}
+	}
+}
+
+func getModulePages(htmlText string, moduleUrl string) []string {
+	var modulePages []string
+
+	doc, err := html.Parse(strings.NewReader(htmlText))
+	if err != nil {
+		die(err)
+	}
+
+	var traverse func(n *html.Node) *html.Node
+	traverse = func(n *html.Node) *html.Node {
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if c.Data == "a" {
+				if strings.Contains(c.Attr[0].Val, moduleUrl[:44]) {
+					modulePages = append(modulePages, c.Attr[0].Val)
+				}
+			}
+			res := traverse(c)
+			if res != nil {
+				return res
+			}
+		}
+		return nil
+	}
+	traverse(doc)
+
+	return modulePages[1:]
+}
+
+func extractHTMLContent(pageUrl string, creds Auth) string {
+	// TODO: Need to snip out the content for the labs.
+	// Get rid of anything after div with ID `screen` or div with class `vpn-switch-card`.
+	var HTMLcontent string
+	pageContent := getModulePageContent(pageUrl, creds)
+
+	doc, err := html.Parse(strings.NewReader(pageContent))
+	if err != nil {
+		die(err)
+	}
+
+	trainingContent := findDivByClass(doc, "training-module")
+	if trainingContent != nil {
+		var tc strings.Builder
+		if err := html.Render(&tc, trainingContent); err != nil {
+			die(err)
+		}
+		HTMLcontent = tc.String()
+	} else {
+		fmt.Printf("Parsing training content failed, HTML dump: %s", pageContent)
+		os.Exit(1)
+	}
+
+	return HTMLcontent
+}
+
+func findDivByClass(n *html.Node, className string) *html.Node {
+	if n.Type == html.ElementNode && n.Data == "div" {
+		for _, a := range n.Attr {
+			if a.Key == "class" && strings.Contains(a.Val, className) {
+				return n
+			}
+		}
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if div := findDivByClass(c, className); div != nil {
+			return div
+		}
+	}
+	return nil
+}
+
+func getModulePageContent(pageUrl string, creds Auth) string {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", pageUrl, nil)
+	if err != nil {
+		die(err)
+	}
+	req.Header.Add("Cookie", creds.cookies)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		die(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		die(err)
+	}
+	content := string(body)
+
+	return content
+}
+
 func die(err error) {
 	fmt.Println(err)
 	os.Exit(1)
