@@ -16,7 +16,7 @@ type Auth struct {
 }
 
 func authenticate(email, password string) Auth {
-	auth := getLoginToken()
+	auth := getLoginTokenAndCookies()
 	payload := "_token=" + auth.loginToken + "&email=" + url.QueryEscape(email) + "&password=" + url.QueryEscape(password)
 
 	//proxy, _ := url.Parse("http://localhost:8080")
@@ -47,7 +47,7 @@ func authenticate(email, password string) Auth {
 	}
 }
 
-func getLoginToken() Auth {
+func getLoginTokenAndCookies() Auth {
 	resp, err := http.Get("https://academy.hackthebox.com/login")
 	if err != nil {
 		die(err)
@@ -121,7 +121,7 @@ func getModule(moduleUrl string, creds Auth) (string, []string) {
 
 	var pagesContent []string
 	for _, pageUrl := range pageUrls {
-		pagesContent = append(pagesContent, extractHTMLContent(pageUrl, creds))
+		pagesContent = append(pagesContent, extractPageContent(pageUrl, creds))
 	}
 
 	return moduleTitle, pagesContent
@@ -189,10 +189,8 @@ func getModulePages(htmlText string, moduleUrl string) []string {
 	return modulePages[1:]
 }
 
-func extractHTMLContent(pageUrl string, creds Auth) string {
-	// TODO: Need to snip out the content for the labs.
-	// Get rid of anything after div with ID `screen` or div with class `vpn-switch-card`.
-	var HTMLcontent string
+func extractPageContent(pageUrl string, creds Auth) string {
+	var result string
 	pageContent := getModulePageContent(pageUrl, creds)
 
 	doc, err := html.Parse(strings.NewReader(pageContent))
@@ -206,13 +204,28 @@ func extractHTMLContent(pageUrl string, creds Auth) string {
 		if err := html.Render(&tc, trainingContent); err != nil {
 			die(err)
 		}
-		HTMLcontent = tc.String()
+		result = tc.String()
 	} else {
 		fmt.Printf("Parsing training content failed, HTML dump: %s", pageContent)
 		os.Exit(1)
 	}
 
-	return HTMLcontent
+	currentDoc, err := html.Parse(strings.NewReader(result))
+	if err != nil {
+		die(err)
+	}
+
+	contentToRemove := findDivByClassOrId(currentDoc, "vpn-switch-card", "screen")
+	if contentToRemove != nil {
+		var htmlBuilder strings.Builder
+		if err := html.Render(&htmlBuilder, contentToRemove); err != nil {
+			die(err)
+		}
+		indexToRemove := strings.Index(result, htmlBuilder.String())
+		result = result[:indexToRemove]
+	}
+
+	return result
 }
 
 func findDivByClass(n *html.Node, className string) *html.Node {
@@ -225,6 +238,23 @@ func findDivByClass(n *html.Node, className string) *html.Node {
 	}
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		if div := findDivByClass(c, className); div != nil {
+			return div
+		}
+	}
+	return nil
+}
+
+func findDivByClassOrId(n *html.Node, className string, id string) *html.Node {
+	if n.Type == html.ElementNode && n.Data == "div" {
+		for _, a := range n.Attr {
+			if (a.Key == "class" && strings.Contains(a.Val, className)) ||
+				(a.Key == "id" && strings.Contains(a.Val, id)) {
+				return n
+			}
+		}
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if div := findDivByClassOrId(c, className, id); div != nil {
 			return div
 		}
 	}
