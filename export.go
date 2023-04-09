@@ -225,6 +225,17 @@ func extractPageContent(pageUrl string, creds Auth) string {
 		result = result[:indexToRemove]
 	}
 
+	curDoc, err := html.Parse(strings.NewReader(result))
+	if err != nil {
+		die(err)
+	}
+	fixImgs(curDoc)
+	var r strings.Builder
+	if err := html.Render(&r, curDoc); err != nil {
+		die(err)
+	}
+	result = r.String()
+
 	return result
 }
 
@@ -259,6 +270,24 @@ func findDivByClassOrId(n *html.Node, className string, id string) *html.Node {
 		}
 	}
 	return nil
+}
+
+func fixImgs(node *html.Node) {
+	if node.Type == html.ElementNode && node.Data == "img" {
+		for i, attr := range node.Attr {
+			if attr.Key == "src" && !startsWith(attr.Val, "https://") {
+				node.Attr[i].Val = "https://academy.hackthebox.com" + attr.Val
+			}
+		}
+	}
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		fixImgs(child)
+	}
+}
+
+func startsWith(str, prefix string) bool {
+	return len(str) >= len(prefix) && str[0:len(prefix)] == prefix
 }
 
 func getModulePageContent(pageUrl string, creds Auth) string {
