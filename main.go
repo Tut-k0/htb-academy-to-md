@@ -4,6 +4,7 @@ import (
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/JohannesKaufmann/html-to-markdown/plugin"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -29,6 +30,11 @@ func htmlToMarkdown(html []string) string {
 		}
 		markdown += m + "\n\n\n"
 	}
+
+	// Strip some content for proper code blocks.
+	markdown = strings.ReplaceAll(markdown, "shell-session", "shell")
+	markdown = strings.ReplaceAll(markdown, "powershell-session", "powershell")
+	markdown = strings.ReplaceAll(markdown, "[!bash!]$ ", "")
 
 	return markdown
 }
