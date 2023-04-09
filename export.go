@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"golang.org/x/net/html"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -310,6 +311,88 @@ func fixImgs(node *html.Node) {
 
 func startsWith(str, prefix string) bool {
 	return len(str) >= len(prefix) && str[0:len(prefix)] == prefix
+}
+
+func getImagesLocally(htmlPages []string) []string {
+	var result []string
+	for _, page := range htmlPages {
+		doc, err := html.Parse(strings.NewReader(page))
+		if err != nil {
+			die(err)
+		}
+		replaceImgs(doc)
+		var htmlBulder strings.Builder
+		if err := html.Render(&htmlBulder, doc); err != nil {
+			die(err)
+		}
+		result = append(result, htmlBulder.String())
+	}
+	return result
+}
+
+func replaceImgs(node *html.Node) {
+	if node.Type == html.ElementNode && node.Data == "img" {
+		for i, attr := range node.Attr {
+			if attr.Key == "src" {
+				fileName := downloadImage(node.Attr[i].Val)
+				node.Attr[i].Val = fileName
+			}
+		}
+	}
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		replaceImgs(child)
+	}
+}
+
+func downloadImage(fileUrl string) string {
+	fileName := randomFileName()
+	resp, err := http.Get(fileUrl)
+	if err != nil {
+		die(err)
+	}
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		die(err)
+	}
+	if isPNG(content) {
+		fileName = fileName + ".png"
+		err := os.WriteFile(fileName, content, 0666)
+		if err != nil {
+			die(err)
+		}
+	} else if isJPEG(content) {
+		fileName = fileName + ".jpg"
+		err := os.WriteFile(fileName, content, 0666)
+		if err != nil {
+			die(err)
+		}
+	} else {
+		err := os.WriteFile(fileName, content, 0666)
+		if err != nil {
+			die(err)
+		}
+	}
+
+	return fileName
+}
+
+func randomFileName() string {
+	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+	s := make([]rune, 12)
+	for i := range s {
+		s[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(s)
+}
+
+func isPNG(b []byte) bool {
+	return len(b) >= 8 && string(b[0:8]) == "\x89PNG\r\n\x1a\n"
+}
+
+func isJPEG(b []byte) bool {
+	return len(b) >= 2 && string(b[0:2]) == "\xff\xd8"
 }
 
 func die(err error) {

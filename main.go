@@ -11,6 +11,10 @@ func main() {
 	options := getArguments()
 	session := authenticate(options.email, options.password)
 	title, content := getModule(options.moduleUrl, session)
+	if options.localImages {
+		content = getImagesLocally(content)
+	}
+
 	markdownContent := htmlToMarkdown(content)
 
 	err := os.WriteFile(title+".md", []byte(markdownContent), 0666)
