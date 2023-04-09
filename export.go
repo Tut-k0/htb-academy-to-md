@@ -189,6 +189,28 @@ func getModulePages(htmlText string, moduleUrl string) []string {
 	return modulePages[1:]
 }
 
+func getModulePageContent(pageUrl string, creds Auth) string {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", pageUrl, nil)
+	if err != nil {
+		die(err)
+	}
+	req.Header.Add("Cookie", creds.cookies)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		die(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		die(err)
+	}
+	content := string(body)
+
+	return content
+}
+
 func extractPageContent(pageUrl string, creds Auth) string {
 	var result string
 	pageContent := getModulePageContent(pageUrl, creds)
@@ -288,28 +310,6 @@ func fixImgs(node *html.Node) {
 
 func startsWith(str, prefix string) bool {
 	return len(str) >= len(prefix) && str[0:len(prefix)] == prefix
-}
-
-func getModulePageContent(pageUrl string, creds Auth) string {
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", pageUrl, nil)
-	if err != nil {
-		die(err)
-	}
-	req.Header.Add("Cookie", creds.cookies)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		die(err)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		die(err)
-	}
-	content := string(body)
-
-	return content
 }
 
 func die(err error) {
