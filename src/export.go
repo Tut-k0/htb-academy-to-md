@@ -96,6 +96,13 @@ func parseLoginToken(htmlText string) string {
 	}
 }
 
+func isLoggedIn(html string) bool {
+	if strings.Contains(html, "Sign in to continue to HTB Academy") {
+		return false
+	}
+	return true
+}
+
 func getModule(moduleUrl string, creds Auth) (string, []string) {
 	//proxy, _ := url.Parse("http://localhost:8080")
 	//tr := &http.Transport{Proxy: http.ProxyURL(proxy), TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
@@ -117,6 +124,11 @@ func getModule(moduleUrl string, creds Auth) (string, []string) {
 		die(err)
 	}
 	content := string(body)
+	if !isLoggedIn(content) {
+		fmt.Println("Authentication failed. Please check that your credentials are correct.\n" +
+			"If your password has special characters such as quotes, ensure they are being escaped correctly.")
+		os.Exit(1)
+	}
 	moduleTitle := getModuleTitle(content)
 	pageUrls := getModulePages(content, moduleUrl)
 
