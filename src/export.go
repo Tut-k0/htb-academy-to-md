@@ -174,7 +174,9 @@ func getModulePages(htmlText string, moduleUrl string) []string {
 	traverse = func(n *html.Node) *html.Node {
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			if c.Data == "a" {
-				if strings.Contains(c.Attr[0].Val, moduleUrl[:44]) {
+				// Pass on <a> tags that do not have any attributes.
+				if len(c.Attr) == 0 {
+				} else if strings.Contains(c.Attr[0].Val, moduleUrl[:44]) {
 					modulePages = append(modulePages, c.Attr[0].Val)
 				}
 			}
