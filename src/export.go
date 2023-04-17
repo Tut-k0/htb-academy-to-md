@@ -367,6 +367,12 @@ func downloadImage(fileUrl string) string {
 		if err != nil {
 			die(err)
 		}
+	} else if isGIF(content) {
+		fileName = fileName + ".gif"
+		err := os.WriteFile(fileName, content, 0666)
+		if err != nil {
+			die(err)
+		}
 	} else {
 		err := os.WriteFile(fileName, content, 0666)
 		if err != nil {
@@ -393,6 +399,19 @@ func isPNG(b []byte) bool {
 
 func isJPEG(b []byte) bool {
 	return len(b) >= 2 && string(b[0:2]) == "\xff\xd8"
+}
+
+func isGIF(data []byte) bool {
+	if len(data) < 6 {
+		return false
+	}
+	if string(data[:3]) != "GIF" {
+		return false
+	}
+	if string(data[3:6]) != "87a" && string(data[3:6]) != "89a" {
+		return false
+	}
+	return true
 }
 
 func die(err error) {
