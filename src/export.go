@@ -143,6 +143,7 @@ func getModule(moduleUrl string, creds Auth) (string, []string) {
 func getModuleTitle(htmlText string) string {
 	var title string
 	var isTitle bool
+	badChars := []string{"/", "\\", "?", "%", "*", ":", "|", "\"", "<", ">"}
 	tkn := html.NewTokenizer(strings.NewReader(htmlText))
 
 	for {
@@ -162,6 +163,9 @@ func getModuleTitle(htmlText string) string {
 
 			if isTitle {
 				title = t.Data
+				for _, badChar := range badChars {
+					title = strings.ReplaceAll(title, badChar, "-")
+				}
 				return title
 			}
 		case tt == html.EndTagToken:
