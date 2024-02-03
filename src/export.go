@@ -49,13 +49,22 @@ func authenticate(email, password string) Auth {
 }
 
 func getLoginTokenAndCookies() Auth {
+	xsrfToken := ""
+	sessionToken := ""
 	resp, err := http.Get("https://academy.hackthebox.com/login")
 	if err != nil {
 		die(err)
 	}
 	cookies := resp.Cookies()
-	if len(cookies) != 2 {
-		fmt.Printf("WARNING: An unexpected amount of cookies has been sent, expected 2, received %d cookies.\n", len(cookies))
+	for _, cookie := range cookies {
+		if cookie.Name == "XSRF-TOKEN" {
+			xsrfToken = cookie.Name + "=" + cookie.Value
+		} else if cookie.Name == "htb_academy_session" {
+			sessionToken = cookie.Name + "=" + cookie.Value
+		}
+	}
+	if xsrfToken == "" || sessionToken == "" {
+		fmt.Println("WARNING: Required cookies not found.")
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -65,7 +74,7 @@ func getLoginTokenAndCookies() Auth {
 	token := parseLoginToken(content)
 	return Auth{
 		loginToken: token,
-		cookies:    cookies[0].Name + "=" + cookies[0].Value + "; " + cookies[1].Name + "=" + cookies[1].Value,
+		cookies:    xsrfToken + ";" + sessionToken,
 	}
 }
 
