@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/JohannesKaufmann/html-to-markdown/plugin"
 	"os"
@@ -9,9 +10,12 @@ import (
 
 func main() {
 	options := getArguments()
+	fmt.Println("Authenticating with HackTheBox...")
 	session := authenticate(options.email, options.password)
+	fmt.Println("Downloading requested module...")
 	title, content := getModule(options.moduleUrl, session)
 	if options.localImages {
+		fmt.Println("Downloading module images...")
 		content = getImagesLocally(content)
 	}
 
@@ -21,6 +25,7 @@ func main() {
 	if err != nil {
 		die(err)
 	}
+	fmt.Println("Finished downloading module!")
 }
 
 func htmlToMarkdown(html []string) string {
