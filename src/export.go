@@ -20,10 +20,6 @@ type userAgentTransport struct {
 	UserAgent string
 }
 
-type Auth struct {
-	cookies string
-}
-
 type Credentials struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -33,7 +29,7 @@ type LoginResponse struct {
 	IntendedRoute string `json:"intended_route"`
 }
 
-func authenticate(email, password string) Auth {
+func authenticate(email, password string) *http.Client {
 	client, err := newClient()
 	if err != nil {
 		die(err)
@@ -104,9 +100,8 @@ func authenticate(email, password string) Auth {
 	if err != nil {
 		die(err)
 	}
-	cookies := resp.Cookies()
 
-	return Auth{cookies: cookies[0].Name + "=" + cookies[0].Value + "; " + cookies[1].Name + "=" + cookies[1].Value}
+	return client
 }
 
 func (ua *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -155,16 +150,8 @@ func getXSRFToken(client *http.Client, urlStr string) string {
 	return ""
 }
 
-func getModule(moduleUrl string, creds Auth) (string, []string) {
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", moduleUrl, nil)
-	if err != nil {
-		die(err)
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0")
-	req.Header.Add("Cookie", creds.cookies)
-
-	resp, err := client.Do(req)
+func getModule(moduleUrl string, client *http.Client) (string, []string) {
+	resp, err := client.Get(moduleUrl)
 	if err != nil {
 		die(err)
 	}
@@ -178,7 +165,7 @@ func getModule(moduleUrl string, creds Auth) (string, []string) {
 
 	var pagesContent []string
 	for _, pageUrl := range pageUrls {
-		pagesContent = append(pagesContent, extractPageContent(pageUrl, creds))
+		pagesContent = append(pagesContent, extractPageContent(pageUrl, client))
 	}
 
 	return moduleTitle, pagesContent
@@ -252,16 +239,8 @@ func getModulePages(htmlText string, moduleUrl string) []string {
 	return modulePages[1:]
 }
 
-func getModulePageContent(pageUrl string, creds Auth) string {
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", pageUrl, nil)
-	if err != nil {
-		die(err)
-	}
-	req.Header.Add("Cookie", creds.cookies)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0")
-
-	resp, err := client.Do(req)
+func getModulePageContent(pageUrl string, client *http.Client) string {
+	resp, err := client.Get(pageUrl)
 	if err != nil {
 		die(err)
 	}
@@ -274,9 +253,9 @@ func getModulePageContent(pageUrl string, creds Auth) string {
 	return content
 }
 
-func extractPageContent(pageUrl string, creds Auth) string {
+func extractPageContent(pageUrl string, client *http.Client) string {
 	var result string
-	pageContent := getModulePageContent(pageUrl, creds)
+	pageContent := getModulePageContent(pageUrl, client)
 
 	doc, err := html.Parse(strings.NewReader(pageContent))
 	if err != nil {
