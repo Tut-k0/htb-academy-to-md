@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"golang.org/x/term"
 )
 
 type Args struct {
@@ -15,8 +17,8 @@ type Args struct {
 
 func getArguments() Args {
 	var mFlag = flag.String("m", "", "(REQUIRED) Academy Module URL to the first page.")
-	var eFlag = flag.String("e", "", "(REQUIRED) Email for your HTB Academy account.")
-	var pFlag = flag.String("p", "", "(REQUIRED) Password for your HTB Academy account.")
+	var eFlag = flag.String("e", "", "(REQUIRED) Email for your HTB account.")
+	var pFlag = flag.String("p", "", "Password for your HTB account.")
 	var imgFlag = flag.Bool("local_images", false, "Save images locally rather than referencing the URL location.")
 	flag.Parse()
 	arg := Args{
@@ -26,9 +28,20 @@ func getArguments() Args {
 		localImages: *imgFlag,
 	}
 
-	if arg.moduleUrl == "" || arg.email == "" || arg.password == "" {
-		fmt.Println("Missing arguments, please use the -h option to display the arguments required to run this application!")
+	if arg.moduleUrl == "" || arg.email == "" {
+		fmt.Println("Missing required arguments for module URL and HTB email. Please use the -h option for help.")
 		os.Exit(1)
+	}
+
+	if arg.password == "" {
+		fmt.Print("Enter Password: ")
+		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		if err != nil {
+			fmt.Println("\nError reading password:", err)
+			os.Exit(1)
+		}
+		arg.password = string(passwordBytes)
+		fmt.Println()
 	}
 
 	return arg
