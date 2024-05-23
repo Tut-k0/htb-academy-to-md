@@ -1,122 +1,162 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"golang.org/x/net/html"
+	"golang.org/x/net/publicsuffix"
 	"io"
 	"math/rand"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"strings"
 )
 
+type userAgentTransport struct {
+	Transport http.RoundTripper
+	UserAgent string
+}
+
 type Auth struct {
-	loginToken string
-	cookies    string
+	cookies string
+}
+
+type Credentials struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type LoginResponse struct {
+	IntendedRoute string `json:"intended_route"`
 }
 
 func authenticate(email, password string) Auth {
-	auth := getLoginTokenAndCookies()
-	payload := "_token=" + auth.loginToken + "&email=" + url.QueryEscape(email) + "&password=" + url.QueryEscape(password)
-
-	//proxy, _ := url.Parse("http://localhost:8080")
-	//tr := &http.Transport{Proxy: http.ProxyURL(proxy), TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-	//client.Transport = tr
-	req, err := http.NewRequest("POST", "https://academy.hackthebox.com/login", strings.NewReader(payload))
+	client, err := newClient()
 	if err != nil {
 		die(err)
 	}
-	req.Header.Add("Cookie", auth.cookies)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := client.Do(req)
+	// Get academy cookies cookies
+	resp, err := client.Get("https://academy.hackthebox.com/login")
+	if err != nil {
+		die(err)
+	}
+
+	// Head over to the SSO login
+	resp, err = client.Get("https://academy.hackthebox.com/sso/redirect")
+	if err != nil {
+		die(err)
+	}
+
+	// Get CSRF-cookie for logging in
+	resp, err = client.Get("https://account.hackthebox.com/api/v1/csrf-cookie")
+	if err != nil {
+		die(err)
+	}
+
+	// Login to HackTheBox
+	credentials := Credentials{
+		Email:    email,
+		Password: password,
+	}
+	jsonData, err := json.Marshal(credentials)
+	if err != nil {
+		die(err)
+	}
+	req, err := http.NewRequest("POST", "https://account.hackthebox.com/api/v1/auth/login", bytes.NewBuffer(jsonData))
+	if err != nil {
+		die(err)
+	}
+	xsrfToken := getXSRFToken(client, "https://account.hackthebox.com/")
+	// Set headers
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("X-Xsrf-Token", xsrfToken)
+	req.Header.Set("Origin", "https://account.hackthebox.com")
+	req.Header.Set("Referer", "https://account.hackthebox.com/login")
+	// Perform the request
+	resp, err = client.Do(req)
+	if err != nil {
+		die(err)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != 200 {
+		fmt.Println("Authenticating to HackTheBox failed.")
+		fmt.Printf("Unexpected status code: %d\n", resp.StatusCode)
+		fmt.Println("Response body:", string(body))
+		os.Exit(1)
+	}
+	var loginResp LoginResponse
+	if err := json.Unmarshal(body, &loginResp); err != nil {
+		die(err)
+	}
+
+	// Make a request to the intended route
+	resp, err = client.Get(loginResp.IntendedRoute)
 	if err != nil {
 		die(err)
 	}
 	cookies := resp.Cookies()
 
-	return Auth{
-		loginToken: auth.loginToken,
-		cookies:    cookies[0].Name + "=" + cookies[0].Value + "; " + cookies[1].Name + "=" + cookies[1].Value,
-	}
+	return Auth{cookies: cookies[0].Name + "=" + cookies[0].Value + "; " + cookies[1].Name + "=" + cookies[1].Value}
 }
 
-func getLoginTokenAndCookies() Auth {
-	xsrfToken := ""
-	sessionToken := ""
-	resp, err := http.Get("https://academy.hackthebox.com/login")
-	if err != nil {
-		die(err)
+func (ua *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", ua.UserAgent)
 	}
-	cookies := resp.Cookies()
+	return ua.Transport.RoundTrip(req)
+}
+
+func newClient() (*http.Client, error) {
+	// For proxy debugging
+	//proxy, _ := url.Parse("http://localhost:8080")
+	//transport := &userAgentTransport{
+	//	Transport: &http.Transport{
+	//		Proxy:           http.ProxyURL(proxy),
+	//		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	//	},
+	//	UserAgent: "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
+	//}
+	transport := &userAgentTransport{
+		Transport: http.DefaultTransport,
+		UserAgent: "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
+	}
+	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
+	if err != nil {
+		return nil, err
+	}
+	return &http.Client{
+		Jar:       jar,
+		Transport: transport,
+	}, nil
+}
+
+func getXSRFToken(client *http.Client, urlStr string) string {
+	u, _ := url.Parse(urlStr)
+	cookies := client.Jar.Cookies(u)
 	for _, cookie := range cookies {
 		if cookie.Name == "XSRF-TOKEN" {
-			xsrfToken = cookie.Name + "=" + cookie.Value
-		} else if cookie.Name == "htb_academy_session" {
-			sessionToken = cookie.Name + "=" + cookie.Value
+			rawToken, err := url.QueryUnescape(cookie.Value)
+			if err != nil {
+				die(err)
+			}
+			return rawToken
 		}
 	}
-	if xsrfToken == "" || sessionToken == "" {
-		fmt.Println("WARNING: Required cookies not found.")
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		die(err)
-	}
-	content := string(body)
-	token := parseLoginToken(content)
-	return Auth{
-		loginToken: token,
-		cookies:    xsrfToken + ";" + sessionToken,
-	}
-}
-
-func parseLoginToken(htmlText string) string {
-	var token string
-	tkn := html.NewTokenizer(strings.NewReader(htmlText))
-
-	for {
-		tt := tkn.Next()
-		switch {
-
-		case tt == html.ErrorToken:
-			os.Exit(1)
-
-		case tt == html.StartTagToken:
-			t := tkn.Token()
-			if t.Data == "input" && t.Attr[0].Val == "hidden" {
-				token = t.Attr[2].Val
-				return token
-			}
-		case tt == html.EndTagToken:
-			t := tkn.Token()
-			if t.Data == "html" {
-				fmt.Println("Could not find token on login page, exiting.")
-				os.Exit(1)
-			}
-		}
-	}
-}
-
-func isLoggedIn(html string) bool {
-	if strings.Contains(html, "Sign in to continue to HTB Academy") {
-		return false
-	}
-	return true
+	return ""
 }
 
 func getModule(moduleUrl string, creds Auth) (string, []string) {
-	//proxy, _ := url.Parse("http://localhost:8080")
-	//tr := &http.Transport{Proxy: http.ProxyURL(proxy), TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{}
-	//client.Transport = tr
 	req, err := http.NewRequest("GET", moduleUrl, nil)
 	if err != nil {
 		die(err)
@@ -133,11 +173,6 @@ func getModule(moduleUrl string, creds Auth) (string, []string) {
 		die(err)
 	}
 	content := string(body)
-	if !isLoggedIn(content) {
-		fmt.Println("Authentication failed. Please check that your credentials are correct.\n" +
-			"If your password has special characters such as quotes, ensure they are being escaped correctly.")
-		os.Exit(1)
-	}
 	moduleTitle := getModuleTitle(content)
 	pageUrls := getModulePages(content, moduleUrl)
 
