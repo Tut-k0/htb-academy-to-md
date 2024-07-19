@@ -16,18 +16,25 @@ Check the releases folder [here](https://github.com/Tut-k0/htb-academy-to-md/rel
 All the executables listed here are for x64 and amd64. If there is not an executable for your OS or architecture, you can simply build the application. (See building section below.)
 
 ### Running
+These steps have changed slightly with the reCaptcha update on the HackTheBox platform. 
+I see this current state as a workaround for not dealing with the reCaptcha until I have more time to dig into that.
+
+Essentially instead of passing your email and password, you will just pass your authenticated session cookies to the application to use. 
+So the one added step for the workaround is manually logging into the academy (I would assume you are logged into Academy anyway to get the module URL), and extracting your cookies from your browser.
+You can fetch these with the developer tools, burp, or a browser extension, whatever works easiest for you.
+The cookies will get passed to the new `-c` argument, and you no longer need to pass an email or password.
 ```bash
 # Get the help menu displayed
 htb-academy-to-md -h
 
 # Feed the URL to the module.
-htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -e <email> -p <password>
+htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -c "htb_academy_session=value; XSRF-TOKEN=value; some-other-cookie=value"
 
 # Save images in module locally.
-htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -e <email> -p <password> -local_images
+htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -local_images -c "htb_academy_session=value; XSRF-TOKEN=value; some-other-cookie=value"
 
 # You can also grab multiple modules using a simple loop if preferred. (bash example)
-for i in $(cat modules.txt);do htb-academy-to-md -m $i -e <email> -p <password>;done
+for i in $(cat modules.txt);do htb-academy-to-md -m $i -c "htb_academy_session=value; XSRF-TOKEN=value; some-other-cookie=value";done
 ```
 
 ### Building

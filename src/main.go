@@ -11,7 +11,8 @@ import (
 func main() {
 	options := getArguments()
 	fmt.Println("Authenticating with HackTheBox...")
-	session := authenticate(options.email, options.password)
+	// session := authenticate(options.email, options.password)
+	session := authenticateWithCookies(options.cookies)
 	fmt.Println("Downloading requested module...")
 	title, content := getModule(options.moduleUrl, session)
 	if options.localImages {
