@@ -29,8 +29,27 @@ type LoginResponse struct {
 	IntendedRoute string `json:"intended_route"`
 }
 
+func authenticateWithCookies(cookies string) *http.Client {
+	client, err := newClient(cookies)
+	if err != nil {
+		die(err)
+	}
+
+	resp, err := client.Get("https://academy.hackthebox.com/dashboard")
+	if err != nil {
+		die(err)
+	}
+
+	if resp.StatusCode != 200 {
+		fmt.Println("Authentication Failed, refresh your cookies and try again!")
+		os.Exit(1)
+	}
+
+	return client
+}
+
 func authenticate(email, password string) *http.Client {
-	client, err := newClient()
+	client, err := newClient("")
 	if err != nil {
 		die(err)
 	}
@@ -111,7 +130,7 @@ func (ua *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	return ua.Transport.RoundTrip(req)
 }
 
-func newClient() (*http.Client, error) {
+func newClient(cookies string) (*http.Client, error) {
 	// For proxy debugging
 	//proxy, _ := url.Parse("http://localhost:8080")
 	//transport := &userAgentTransport{
@@ -129,10 +148,35 @@ func newClient() (*http.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &http.Client{
+
+	client := &http.Client{
 		Jar:       jar,
 		Transport: transport,
-	}, nil
+	}
+
+	if cookies != "" {
+		addCookiesToJar(jar, cookies)
+	}
+
+	return client, nil
+}
+
+func addCookiesToJar(jar *cookiejar.Jar, cookies string) {
+	cookiePairs := strings.Split(cookies, ";")
+	cookieList := []*http.Cookie{}
+
+	for _, pair := range cookiePairs {
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) == 2 {
+			cookieList = append(cookieList, &http.Cookie{
+				Name:  strings.TrimSpace(parts[0]),
+				Value: strings.TrimSpace(parts[1]),
+			})
+		}
+	}
+
+	u, _ := url.Parse("https://academy.hackthebox.com")
+	jar.SetCookies(u, cookieList)
 }
 
 func getXSRFToken(client *http.Client, urlStr string) string {
