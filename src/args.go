@@ -7,8 +7,8 @@ import (
 )
 
 type Args struct {
-	moduleUrl string
-	cookies   string
+	moduleUrl   string
+	cookies     string
 	localImages bool
 }
 
@@ -18,8 +18,8 @@ func getArguments() Args {
 	var imgFlag = flag.Bool("local_images", false, "Save images locally rather than referencing the URL location.")
 	flag.Parse()
 	arg := Args{
-		moduleUrl: *mFlag,
-		cookies:   *cFlag,
+		moduleUrl:   *mFlag,
+		cookies:     *cFlag,
 		localImages: *imgFlag,
 	}
 

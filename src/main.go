@@ -12,10 +12,10 @@ func main() {
 	session := authenticateWithCookies(options.cookies)
 	fmt.Println("Downloading requested module...")
 	title, content := getModule(options.moduleUrl, session)
-	
+
 	// Extract module ID for image folder naming
 	moduleID := extractModuleID(options.moduleUrl)
-	
+
 	if options.localImages {
 		fmt.Println("Downloading module images...")
 		content = getImagesLocally(content, title, moduleID)
@@ -46,7 +46,7 @@ func cleanMarkdown(sections []string) string {
 	// Remove bash prompts - handle both with and without leading space
 	markdown = strings.ReplaceAll(markdown, " [!bash!]$ ", " ")
 	markdown = strings.ReplaceAll(markdown, "[!bash!]$ ", "")
-	
+
 	// Fix malformed code block closures (remove leading/trailing spaces from lines with only backticks)
 	markdown = fixCodeBlockFences(markdown)
 
