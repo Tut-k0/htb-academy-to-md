@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	md "github.com/JohannesKaufmann/html-to-markdown"
-	"github.com/JohannesKaufmann/html-to-markdown/plugin"
 	"os"
 	"strings"
 )
@@ -11,16 +9,22 @@ import (
 func main() {
 	options := getArguments()
 	fmt.Println("Authenticating with HackTheBox...")
-	// session := authenticate(options.email, options.password)
 	session := authenticateWithCookies(options.cookies)
 	fmt.Println("Downloading requested module...")
 	title, content := getModule(options.moduleUrl, session)
+	
+	// Extract module ID for image folder naming
+	moduleID := extractModuleID(options.moduleUrl)
+	
 	if options.localImages {
 		fmt.Println("Downloading module images...")
-		content = getImagesLocally(content)
+		content = getImagesLocally(content, title, moduleID)
+	} else {
+		// Fix image URLs to be absolute
+		content = fixImageUrls(content)
 	}
 
-	markdownContent := htmlToMarkdown(content)
+	markdownContent := cleanMarkdown(content)
 
 	err := os.WriteFile(title+".md", []byte(markdownContent), 0666)
 	if err != nil {
@@ -29,22 +33,34 @@ func main() {
 	fmt.Println("Finished downloading module!")
 }
 
-func htmlToMarkdown(html []string) string {
-	converter := md.NewConverter("", true, nil)
-	converter.Use(plugin.GitHubFlavored())
+func cleanMarkdown(sections []string) string {
 	var markdown string
-	for _, content := range html {
-		m, err := converter.ConvertString(content)
-		if err != nil {
-			die(err)
-		}
-		markdown += m + "\n\n\n"
+	for _, content := range sections {
+		markdown += content + "\n\n\n"
 	}
 
 	// Strip some content for proper code blocks.
 	markdown = strings.ReplaceAll(markdown, "shell-session", "shell")
 	markdown = strings.ReplaceAll(markdown, "powershell-session", "powershell")
+	markdown = strings.ReplaceAll(markdown, "cmd-session", "shell")
+	// Remove bash prompts - handle both with and without leading space
+	markdown = strings.ReplaceAll(markdown, " [!bash!]$ ", " ")
 	markdown = strings.ReplaceAll(markdown, "[!bash!]$ ", "")
+	
+	// Fix malformed code block closures (remove leading/trailing spaces from lines with only backticks)
+	markdown = fixCodeBlockFences(markdown)
 
 	return markdown
+}
+
+func fixCodeBlockFences(content string) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// If the line is only backticks (with optional language identifier)
+		if strings.HasPrefix(trimmed, "```") {
+			lines[i] = trimmed
+		}
+	}
+	return strings.Join(lines, "\n")
 }
