@@ -18,7 +18,7 @@ func main() {
 
 	if options.localImages {
 		fmt.Println("Downloading module images...")
-		content = getImagesLocally(content, title, moduleID)
+		content = getImagesLocally(content, moduleID)
 	} else {
 		// Fix image URLs to be absolute
 		content = fixImageUrls(content)

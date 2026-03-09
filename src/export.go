@@ -359,7 +359,7 @@ func fixRelativeImageUrls(content string) string {
 	return result
 }
 
-func getImagesLocally(sections []string, moduleTitle string, moduleID string) []string {
+func getImagesLocally(sections []string, moduleID string) []string {
 	// Create images directory if it doesn't exist
 	imgDir := "images"
 	if err := os.MkdirAll(imgDir, 0755); err != nil {
