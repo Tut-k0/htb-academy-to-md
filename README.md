@@ -47,3 +47,10 @@ for i in $(cat modules.txt);do htb-academy-to-md -m $i -c "htb_academy_session=v
 # Run from inside the /src folder.
 go build -o htb-academy-to-md
 ```
+
+### Contributing
+Pull requests are always welcome.
+
+#### Contributors
+- [Tut-k0](https://github.com/Tut-k0): Original Author
+- [Robertguarneros](https://github.com/Robertguarneros): Added support for HTB Academy 2.0
