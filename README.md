@@ -3,6 +3,8 @@ This is a simple CLI application that will fetch and convert a HackTheBox Academ
 This program will only grab one module at a time, and requires authenticating with the platform. 
 You will also need to have the module unlocked, which should go without saying.
 
+**Updated for HTB Academy 2.0** - This tool has been updated to work with the latest HTB Academy platform using the new API endpoints.
+
 I personally use [Obsidian](https://obsidian.md/) as my note-taking tool, and this application is tailored and tested for rendering markdown utilizing it.
 Most other note-taking tools that can import markdown files should work fine as well.
 
@@ -16,25 +18,28 @@ Check the releases folder [here](https://github.com/Tut-k0/htb-academy-to-md/rel
 All the executables listed here are for x64 and amd64. If there is not an executable for your OS or architecture, you can simply build the application. (See building section below.)
 
 ### Running
-These steps have changed slightly with the reCaptcha update on the HackTheBox platform. 
-I see this current state as a workaround for not dealing with the reCaptcha until I have more time to dig into that.
+This application uses session cookie authentication rather than email/password login. This approach is necessary because:
+- HTB Academy can implement reCAPTCHA on login forms
+- Two-factor authentication (2FA) may be required for accounts
 
-Essentially instead of passing your email and password, you will just pass your authenticated session cookies to the application to use. 
-So the one added step for the workaround is manually logging into the academy (I would assume you are logged into Academy anyway to get the module URL), and extracting your cookies from your browser.
-You can fetch these with the developer tools, burp, or a browser extension, whatever works easiest for you.
-The cookies will get passed to the new `-c` argument, and you no longer need to pass an email or password.
+Since automating reCAPTCHA and 2FA programmatically is not feasible, the session cookie method provides a simple workaround.
+Simply log into HTB Academy manually (as you normally would to access modules), extract your session cookie from your browser, and pass it to the application.
+
+You can extract cookies using browser developer tools (F12 → Application/Storage → Cookies), Burp Suite, or a browser extension.
+The session cookie you need is `htb_academy_session`.
+
 ```bash
 # Get the help menu displayed
 htb-academy-to-md -h
 
 # Feed the URL to the module.
-htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -c "htb_academy_session=value; XSRF-TOKEN=value; some-other-cookie=value"
+htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -c "htb_academy_session=value"
 
 # Save images in module locally.
-htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -local_images -c "htb_academy_session=value; XSRF-TOKEN=value; some-other-cookie=value"
+htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -local_images -c "htb_academy_session=value"
 
 # You can also grab multiple modules using a simple loop if preferred. (bash example)
-for i in $(cat modules.txt);do htb-academy-to-md -m $i -c "htb_academy_session=value; XSRF-TOKEN=value; some-other-cookie=value";done
+for i in $(cat modules.txt);do htb-academy-to-md -m $i -c "htb_academy_session=value";done
 ```
 
 ### Building
