@@ -3,13 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"golang.org/x/net/publicsuffix"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"strings"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 type userAgentTransport struct {
@@ -50,6 +51,9 @@ type SectionContent struct {
 	Content string `json:"content"`
 }
 
+const cdnBase = "https://cdn.services-k8s.prod.aws.htb.systems"
+const academyBase = "https://academy.hackthebox.com"
+
 func authenticateWithCookies(cookies string) *http.Client {
 	client, err := newClient(cookies)
 	if err != nil {
@@ -57,7 +61,7 @@ func authenticateWithCookies(cookies string) *http.Client {
 	}
 
 	// Validates authentication by checking access to the dashboard
-	resp, err := client.Get("https://academy.hackthebox.com/app/dashboard")
+	resp, err := client.Get(academyBase + "/app/dashboard")
 	if err != nil {
 		die(err)
 	}
@@ -122,7 +126,7 @@ func addCookiesToJar(jar *cookiejar.Jar, cookies string) {
 		}
 	}
 
-	u, _ := url.Parse("https://academy.hackthebox.com")
+	u, _ := url.Parse(academyBase)
 	jar.SetCookies(u, cookieList)
 }
 
@@ -174,7 +178,7 @@ func normalizeModuleUrl(moduleUrl string) string {
 }
 
 func getModuleMetadata(moduleID string, refererUrl string, client *http.Client) string {
-	apiUrl := fmt.Sprintf("https://academy.hackthebox.com/api/v2/modules/%s", moduleID)
+	apiUrl := fmt.Sprintf(academyBase+"/api/v2/modules/%s", moduleID)
 
 	req, err := http.NewRequest("GET", apiUrl, nil)
 	if err != nil {
@@ -217,7 +221,7 @@ func getModuleMetadata(moduleID string, refererUrl string, client *http.Client) 
 }
 
 func getModuleSections(moduleID string, refererUrl string, client *http.Client) []Section {
-	apiUrl := fmt.Sprintf("https://academy.hackthebox.com/api/v3/modules/%s/sections", moduleID)
+	apiUrl := fmt.Sprintf(academyBase+"/api/v3/modules/%s/sections", moduleID)
 
 	req, err := http.NewRequest("GET", apiUrl, nil)
 	if err != nil {
@@ -268,7 +272,7 @@ func getModuleSections(moduleID string, refererUrl string, client *http.Client) 
 }
 
 func getSectionContent(moduleID string, sectionID int, refererUrl string, client *http.Client) string {
-	apiUrl := fmt.Sprintf("https://academy.hackthebox.com/api/v2/modules/%s/sections/%d", moduleID, sectionID)
+	apiUrl := fmt.Sprintf(academyBase+"/api/v2/modules/%s/sections/%d", moduleID, sectionID)
 
 	req, err := http.NewRequest("GET", apiUrl, nil)
 	if err != nil {
@@ -307,14 +311,129 @@ func getSectionContent(moduleID string, sectionID int, refererUrl string, client
 	return content
 }
 
+// htmlImageMatch holds the positions and attributes of a parsed <img> tag.
+type htmlImageMatch struct {
+	tagStart int
+	tagEnd   int // index past the closing >
+	src      string
+	alt      string
+}
+
+// extractHtmlImageTags scans content for <img> tags outside of fenced code blocks
+// and returns their positions and parsed src/alt attributes.
+func extractHtmlImageTags(content string) []htmlImageMatch {
+	var matches []htmlImageMatch
+	inFence := false
+	i := 0
+	for i < len(content) {
+		// Track fenced code blocks (``` fences) so we don't mangle example HTML.
+		if i+2 < len(content) && content[i:i+3] == "```" {
+			inFence = !inFence
+			i += 3
+			continue
+		}
+		if inFence {
+			i++
+			continue
+		}
+
+		if !strings.HasPrefix(content[i:], "<img") {
+			i++
+			continue
+		}
+		tagStart := i
+
+		tagEnd := findTagEnd(content, i)
+		if tagEnd == -1 {
+			break
+		}
+		tag := content[tagStart:tagEnd]
+
+		src := extractTagAttr(tag, "src")
+		alt := extractTagAttr(tag, "alt")
+
+		if src != "" {
+			matches = append(matches, htmlImageMatch{tagStart, tagEnd, src, alt})
+		}
+		i = tagEnd
+	}
+	return matches
+}
+
+func findTagEnd(content string, start int) int {
+	i := start + 1 // skip the opening
+	for i < len(content) {
+		ch := content[i]
+		if ch == '>' {
+			return i + 1
+		}
+		// Enter a quoted attribute value — skip everything until the matching quote.
+		if ch == '"' || ch == '\'' {
+			quote := ch
+			i++
+			for i < len(content) && content[i] != quote {
+				i++
+			}
+		}
+		i++
+	}
+	return -1
+}
+
+// extractTagAttr pulls the value of a named attribute from a raw HTML tag string.
+func extractTagAttr(tag, attr string) string {
+	// Try double-quoted: attr="value"
+	needle := attr + `="`
+	if idx := strings.Index(tag, needle); idx != -1 {
+		rest := tag[idx+len(needle):]
+		end := strings.Index(rest, `"`)
+		if end != -1 {
+			return rest[:end]
+		}
+	}
+	// Try single-quoted: attr='value'
+	needle = attr + `='`
+	if idx := strings.Index(tag, needle); idx != -1 {
+		rest := tag[idx+len(needle):]
+		end := strings.Index(rest, `'`)
+		if end != -1 {
+			return rest[:end]
+		}
+	}
+	return ""
+}
+
 func fixImageUrls(sections []string) []string {
 	var result []string
 	for _, section := range sections {
 		// Replace relative image paths with absolute URLs
 		updatedSection := fixRelativeImageUrls(section)
+		// Convert any inline <img> tags to markdown image syntax
+		updatedSection = fixHtmlImageTags(updatedSection)
 		result = append(result, updatedSection)
 	}
 	return result
+}
+
+// fixHtmlImageTags replaces <img> tags in content with markdown image syntax,
+// making relative src paths absolute.
+func fixHtmlImageTags(content string) string {
+	matches := extractHtmlImageTags(content)
+	// Process backwards so earlier offsets stay valid.
+	for i := len(matches) - 1; i >= 0; i-- {
+		m := matches[i]
+		src := m.src
+		if !strings.HasPrefix(src, "http") {
+			base := academyBase
+			if strings.HasPrefix(src, "/content/") {
+				base = cdnBase
+			}
+			src = base + src
+		}
+		mdImage := fmt.Sprintf("![%s](%s)", m.alt, src)
+		content = content[:m.tagStart] + mdImage + content[m.tagEnd:]
+	}
+	return content
 }
 
 func fixRelativeImageUrls(content string) string {
@@ -346,9 +465,14 @@ func fixRelativeImageUrls(content string) string {
 
 		imagePath := result[pathStart:pathEnd]
 
-		// If path is relative, make it absolute
+		// If path is relative, make it absolute.
+		// /content/ paths are served from the CDN, everything else from the academy host.
 		if !strings.HasPrefix(imagePath, "http") {
-			newPath := "https://academy.hackthebox.com" + imagePath
+			base := academyBase
+			if strings.HasPrefix(imagePath, "/content/") {
+				base = cdnBase
+			}
+			newPath := base + imagePath
 			result = result[:pathStart] + newPath + result[pathEnd:]
 			searchPos = pathStart + len(newPath)
 		} else {
@@ -428,7 +552,7 @@ func replaceImagePathsInSectionWithCounter(content string, moduleID string, star
 		searchPos = pathEnd + 1
 	}
 
-	// Process images from the end backwards
+	// Process markdown images from the end backwards
 	for i := len(imageMatches) - 1; i >= 0; i-- {
 		match := imageMatches[i]
 		imagePath := match.imagePath
@@ -438,7 +562,7 @@ func replaceImagePathsInSectionWithCounter(content string, moduleID string, star
 
 		fullUrl := imagePath
 		if !strings.HasPrefix(imagePath, "http") {
-			fullUrl = "https://academy.hackthebox.com" + imagePath
+			fullUrl = academyBase + imagePath
 		}
 
 		// Extract original filename from path
@@ -452,7 +576,55 @@ func replaceImagePathsInSectionWithCounter(content string, moduleID string, star
 		result = result[:match.pathStart] + newPath + result[match.pathEnd:]
 	}
 
+	// Handle inline <img> tags. Extract, download, and replace with markdown syntax.
+	htmlMatches := extractHtmlImageTags(result)
+	for i := len(htmlMatches) - 1; i >= 0; i-- {
+		m := htmlMatches[i]
+		imageCounter++
+
+		fullUrl := m.src
+		if !strings.HasPrefix(m.src, "http") {
+			fullUrl = academyBase + m.src
+		}
+
+		pathParts := strings.Split(m.src, "/")
+		originalName := pathParts[len(pathParts)-1]
+
+		localPath := downloadImageToFile(fullUrl, moduleID, imageCounter, originalName)
+		mdImage := fmt.Sprintf("![%s](%s)", m.alt, localPath)
+		result = result[:m.tagStart] + mdImage + result[m.tagEnd:]
+	}
+
 	return result, imageCounter
+}
+
+// fetchImageBytes fetches an image from the given URL, falling back to the CDN
+// host for paths that return a non-200 response from the academy host.
+func fetchImageBytes(fileUrl string) ([]byte, string, error) {
+	resp, err := http.Get(fileUrl)
+	if err != nil {
+		return nil, fileUrl, err
+	}
+	defer resp.Body.Close()
+
+	// CDN fallback: if the academy host 404s, retry against the CDN.
+	if resp.StatusCode != 200 {
+		cdnUrl := cdnBase + strings.TrimPrefix(fileUrl, academyBase)
+		cdnResp, cdnErr := http.Get(cdnUrl)
+		if cdnErr != nil {
+			return nil, fileUrl, cdnErr
+		}
+		defer cdnResp.Body.Close()
+		if cdnResp.StatusCode != 200 {
+			return nil, fileUrl, fmt.Errorf("failed to fetch image from all available hosts (academy: %d, cdn: %d) for path: %s",
+				resp.StatusCode, cdnResp.StatusCode, strings.TrimPrefix(fileUrl, academyBase))
+		}
+		content, err := io.ReadAll(cdnResp.Body)
+		return content, cdnUrl, err
+	}
+
+	content, err := io.ReadAll(resp.Body)
+	return content, fileUrl, err
 }
 
 func downloadImageToFile(fileUrl string, moduleID string, counter int, originalName string) string {
@@ -464,17 +636,10 @@ func downloadImageToFile(fileUrl string, moduleID string, counter int, originalN
 
 	fileName := fmt.Sprintf("images/module-%s-%03d%s", moduleID, counter, ext)
 
-	resp, err := http.Get(fileUrl)
+	content, _, err := fetchImageBytes(fileUrl)
 	if err != nil {
 		fmt.Printf("Warning: Failed to download image %s: %v\n", fileUrl, err)
 		return fileUrl // Return original URL on failure
-	}
-	defer resp.Body.Close()
-
-	content, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("Warning: Failed to read image %s: %v\n", fileUrl, err)
-		return fileUrl
 	}
 
 	// If extension can't be determined from URL, detect from content
