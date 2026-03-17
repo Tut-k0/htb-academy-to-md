@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -26,7 +27,15 @@ func main() {
 
 	markdownContent := cleanMarkdown(content)
 
-	err := os.WriteFile(title+".md", []byte(markdownContent), 0666)
+	outputPath := title + ".md"
+	if options.outputDir != "" {
+		if err := os.MkdirAll(options.outputDir, 0755); err != nil {
+			die(err)
+		}
+		outputPath = filepath.Join(options.outputDir, title+".md")
+	}
+
+	err := os.WriteFile(outputPath, []byte(markdownContent), 0666)
 	if err != nil {
 		die(err)
 	}
