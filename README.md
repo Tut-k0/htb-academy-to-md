@@ -38,6 +38,9 @@ htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -c "
 # Save images in module locally.
 htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -local_images -c "htb_academy_session=value"
 
+# Save module in a directory tree structure not in a single .md file.
+htb-academy-to-md -m https://academy.hackthebox.com/module/112/section/1060 -local_images -dir_tree -c "htb_academy_session=value"
+
 # You can also grab multiple modules using a simple loop if preferred. (bash example)
 for i in $(cat modules.txt);do htb-academy-to-md -m $i -c "htb_academy_session=value";done
 ```

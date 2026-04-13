@@ -130,7 +130,7 @@ func addCookiesToJar(jar *cookiejar.Jar, cookies string) {
 	jar.SetCookies(u, cookieList)
 }
 
-func getModule(moduleUrl string, client *http.Client) (string, []string) {
+func getModule(moduleUrl string, client *http.Client) (string, []string, []SectionGroup) {
 	// Extract module ID from URL (e.g., https://academy.hackthebox.com/module/163/section/1546)
 	moduleID := extractModuleID(moduleUrl)
 
@@ -141,7 +141,7 @@ func getModule(moduleUrl string, client *http.Client) (string, []string) {
 	moduleTitle := getModuleMetadata(moduleID, refererUrl, client)
 
 	// Fetch all sections for this module
-	sections := getModuleSections(moduleID, refererUrl, client)
+	sections, groups := getModuleSections(moduleID, refererUrl, client)
 
 	// Fetch content for each section
 	var pagesContent []string
@@ -150,7 +150,7 @@ func getModule(moduleUrl string, client *http.Client) (string, []string) {
 		pagesContent = append(pagesContent, content)
 	}
 
-	return moduleTitle, pagesContent
+	return moduleTitle, pagesContent, groups
 }
 
 func extractModuleID(moduleUrl string) string {
@@ -210,17 +210,24 @@ func getModuleMetadata(moduleID string, refererUrl string, client *http.Client) 
 		die(err)
 	}
 
-	// Clean the title for use as a filename
+    
 	title := moduleResp.Data.Name
-	badChars := []string{"/", "\\", "?", "%", "*", ":", "|", "\"", "<", ">"}
-	for _, badChar := range badChars {
-		title = strings.ReplaceAll(title, badChar, "-")
-	}
+    title = cleanFilename(title)
 
 	return title
 }
 
-func getModuleSections(moduleID string, refererUrl string, client *http.Client) []Section {
+func cleanFilename(filename string) string {
+    // Clean the title for use as a filename
+	   
+    badChars := []string{"/", "\\", "?", "%", "*", ":", "|", "\"", "<", ">"}
+    for _, badChar := range badChars {
+        filename = strings.ReplaceAll(filename, badChar, "-")
+    }
+    return filename
+}
+
+func getModuleSections(moduleID string, refererUrl string, client *http.Client) ([]Section, []SectionGroup) {
 	apiUrl := fmt.Sprintf(academyBase+"/api/v3/modules/%s/sections", moduleID)
 
 	req, err := http.NewRequest("GET", apiUrl, nil)
@@ -268,7 +275,7 @@ func getModuleSections(moduleID string, refererUrl string, client *http.Client) 
 		}
 	}
 
-	return allSections
+	return allSections, sectionsResp.Data
 }
 
 func getSectionContent(moduleID string, sectionID int, refererUrl string, client *http.Client) string {
@@ -483,9 +490,17 @@ func fixRelativeImageUrls(content string) string {
 	return result
 }
 
-func getImagesLocally(sections []string, moduleID string) []string {
+func getImagesLocally(sections []string, moduleID string, title string, directoryTree bool) []string {
 	// Create images directory if it doesn't exist
-	imgDir := "images"
+
+	title = strings.ReplaceAll(title, " ", "-") //replace spaces
+    var imgDir string
+    if (directoryTree){
+        imgDir = "images/"+title
+    } else {
+        imgDir = "images"
+    }
+
 	if err := os.MkdirAll(imgDir, 0755); err != nil {
 		die(err)
 	}
@@ -494,7 +509,7 @@ func getImagesLocally(sections []string, moduleID string) []string {
 	imageCounter := 0
 
 	for _, section := range sections {
-		updatedSection, newCounter := replaceImagePathsInSectionWithCounter(section, moduleID, imageCounter)
+		updatedSection, newCounter := replaceImagePathsInSectionWithCounter(section, moduleID, imageCounter, title, directoryTree)
 		imageCounter = newCounter
 		result = append(result, updatedSection)
 	}
@@ -502,7 +517,7 @@ func getImagesLocally(sections []string, moduleID string) []string {
 	return result
 }
 
-func replaceImagePathsInSectionWithCounter(content string, moduleID string, startCounter int) (string, int) {
+func replaceImagePathsInSectionWithCounter(content string, moduleID string, startCounter int, title string, directoryTree bool) (string, int) {
 	imageCounter := startCounter
 	result := content
 
@@ -570,7 +585,7 @@ func replaceImagePathsInSectionWithCounter(content string, moduleID string, star
 		originalName := pathParts[len(pathParts)-1]
 
 		// Create a meaningful filename and download
-		newPath = downloadImageToFile(fullUrl, moduleID, imageCounter, originalName)
+		newPath = downloadImageToFile(fullUrl, moduleID, imageCounter, originalName, title, directoryTree)
 
 		// Replace the image path in the result
 		result = result[:match.pathStart] + newPath + result[match.pathEnd:]
@@ -590,7 +605,7 @@ func replaceImagePathsInSectionWithCounter(content string, moduleID string, star
 		pathParts := strings.Split(m.src, "/")
 		originalName := pathParts[len(pathParts)-1]
 
-		localPath := downloadImageToFile(fullUrl, moduleID, imageCounter, originalName)
+		localPath := downloadImageToFile(fullUrl, moduleID, imageCounter, originalName, title, directoryTree)
 		mdImage := fmt.Sprintf("![%s](%s)", m.alt, localPath)
 		result = result[:m.tagStart] + mdImage + result[m.tagEnd:]
 	}
@@ -627,14 +642,21 @@ func fetchImageBytes(fileUrl string) ([]byte, string, error) {
 	return content, fileUrl, err
 }
 
-func downloadImageToFile(fileUrl string, moduleID string, counter int, originalName string) string {
+func downloadImageToFile(fileUrl string, moduleID string, counter int, originalName string, title string, directoryTree bool) string {
 	// Create filename: images/module-{id}-{counter}-{original}.ext
 	ext := ""
 	if idx := strings.LastIndex(originalName, "."); idx != -1 {
 		ext = originalName[idx:]
 	}
 
-	fileName := fmt.Sprintf("images/module-%s-%03d%s", moduleID, counter, ext)
+    var fileName string
+    if (directoryTree) {
+        fileName = fmt.Sprintf("images/"+title+"/"+"module-%s-%03d%s", moduleID, counter, ext)
+    } else {
+	    fileName = fmt.Sprintf("images/module-%s-%03d%s", moduleID, counter, ext)
+    }
+
+
 
 	content, _, err := fetchImageBytes(fileUrl)
 	if err != nil {
